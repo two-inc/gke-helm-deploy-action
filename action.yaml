@@ -32,27 +32,13 @@ runs:
   using: composite
   steps:
     -
-      name: Clone helm repo
-      uses: actions/checkout@master
-      with:
-        repository: ${{ inputs.helm-repository }}
-        token: ${{ inputs.helm-ssh-key }}
-        path: ./tillit-helm
+      name: Install Helm
+      shell: bash
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
     -
-      name: Replace version in helm values
-      uses: mikefarah/yq@master
-      with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
-      env:
-        IMAGE_TAG: ${{ inputs.image-tag }}
-    -
-      name: Setup gcloud cli
-      uses: google-github-actions/setup-gcloud@94337306dda8180d967a56932ceb4ddcf01edae7
-      with:
-        service_account_key: ${{ inputs.gke-sa-key }}
-        project_id: ${{ inputs.gke-project }}
-    -
-      name: Determine which cluster to deploy to based on branch name
+      name: Determine which cluster and namespace to deploy to
+      shell: bash
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
         if echo "${GITHUB_REF##*/}" | grep -qE '^(main|master)$'; then
@@ -69,6 +55,12 @@ runs:
             echo "::set-env name=NAMESPACE::perftest"
         fi
     -
+      name: Setup gcloud cli
+      uses: google-github-actions/setup-gcloud@94337306dda8180d967a56932ceb4ddcf01edae7
+      with:
+        service_account_key: ${{ inputs.gke-sa-key }}
+        project_id: ${{ inputs.gke-project }}
+    -
       name: Setup gke credentials
       uses: google-github-actions/get-gke-credentials@fb08709ba27618c31c09e014e1d8364b02e5042e
       with:
@@ -76,16 +68,27 @@ runs:
         location: ${{ inputs.gke-zone }}
         credentials: ${{ inputs.gke-sa-key }}
     -
-      name: Install Helm
-      run: |
-        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+      name: Clone helm repo
+      uses: actions/checkout@master
+      with:
+        repository: ${{ inputs.helm-repository }}
+        token: ${{ inputs.helm-ssh-key }}
+        path: ./tillit-helm
     -
+      name: Replace version in helm values
+      uses: mikefarah/yq@master
+      shell: bash
+      with:
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
+      env:
+        IMAGE_TAG: ${{ inputs.image-tag }}
       name: Deploy
       run: |
         cd tillit-helm
         helm upgrade -i --create-namespace -n ${{ NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
     -
       name: Push new version to the tillit-helm repo
+      shell: bash
       run: |
         cd tillit-helm
         git config user.name github-actions
