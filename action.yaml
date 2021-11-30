@@ -1,10 +1,6 @@
 name: Deploy to GKE
 description: Deploy Helm chart to a Kubernetes cluster on GKE
 inputs:
-  helm-repository:
-    description: Helm repository
-    required: true
-    default: tillit-dot-ai/tillit-helm
   helm-ssh-key:
     description: SSH key to clone Helm chart repo
     required: true
@@ -17,12 +13,17 @@ inputs:
   github-ref:
     description: GitHub reference of the source repository
     required: true
-  gke-zone:
-    description: GKE zone
-    required: true
   gke-sa-key:
     description: GKE Service Account Credential
     required: true
+  helm-repository:
+    description: Helm repository
+    required: true
+    default: tillit-dot-ai/tillit-helm
+  gke-zone:
+    description: GKE zone
+    required: true
+    default: europe-north1
   gke-project:
     description: GKE project name
     required: true
