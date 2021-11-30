@@ -77,12 +77,13 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
-      shell: bash
       with:
         cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
+    -
       name: Deploy
+      shell: bash
       run: |
         cd tillit-helm
         helm upgrade -i --create-namespace -n ${{ NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
