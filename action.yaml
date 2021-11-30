@@ -1,0 +1,93 @@
+name: Deploy to GKE
+description: Deploy Helm chart to a Kubernetes cluster on GKE
+inputs:
+  helm-repository:
+    description: Helm repository
+    required: true
+    default: tillit-dot-ai/tillit-helm
+  helm-ssh-key:
+    description: SSH key to clone Helm chart repo
+    required: true
+  helm-chart:
+    description: Helm chart to deploy
+    required: true
+  image-tag:
+    description: Image tag to deploy
+    required: true
+  github-ref:
+    description: GitHub reference of the source repository
+    required: true
+  gke-zone:
+    description: GKE zone
+    required: true
+  gke-sa-key:
+    description: GKE Service Account Credential
+    required: true
+  gke-project:
+    description: GKE project name
+    required: true
+    default: tillit-api
+runs:
+  using: composite
+  steps:
+    -
+      name: Clone helm repo
+      uses: actions/checkout@master
+      with:
+        repository: ${{ inputs.helm-repository }}
+        token: ${{ inputs.helm-ssh-key }}
+        path: ./tillit-helm
+    -
+      name: Replace version in helm values
+      uses: mikefarah/yq@master
+      with:
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
+      env:
+        IMAGE_TAG: ${{ inputs.image-tag }}
+    -
+      name: Setup gcloud cli
+      uses: google-github-actions/setup-gcloud@94337306dda8180d967a56932ceb4ddcf01edae7
+      with:
+        service_account_key: ${{ inputs.gke-sa-key }}
+        project_id: ${{ inputs.gke-project }}
+    -
+      name: Determine which cluster to deploy to based on branch name
+      run: |
+        GITHUB_REF=${{ inputs.github-ref }}
+        if echo "${GITHUB_REF##*/}" | grep -qE '^(main|master)$'; then
+            echo "::set-env name=GKE_CLUSTER::tillit-k8s-cluster"
+            echo "::set-env name=NAMESPACE::production"
+        elif echo "${GITHUB_REF##*/}" | grep -qE '^(staging|develop)$'; then
+            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
+            echo "::set-env name=NAMESPACE::staging"
+        elif echo "${GITHUB_REF##*/}" | grep -qE '^(experimental)$'; then
+            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
+            echo "::set-env name=NAMESPACE::experimental"
+        elif echo "${GITHUB_REF##*/}" | grep -qE '^(perftest)$'; then
+            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
+            echo "::set-env name=NAMESPACE::perftest"
+        fi
+    -
+      name: Setup gke credentials
+      uses: google-github-actions/get-gke-credentials@fb08709ba27618c31c09e014e1d8364b02e5042e
+      with:
+        cluster_name: ${{ GKE_CLUSTER }}
+        location: ${{ inputs.gke-zone }}
+        credentials: ${{ inputs.gke-sa-key }}
+    -
+      name: Install Helm
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    -
+      name: Deploy
+      run: |
+        cd tillit-helm
+        helm upgrade -i --create-namespace -n ${{ NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
+    -
+      name: Push new version to the tillit-helm repo
+      run: |
+        cd tillit-helm
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git commit -am "Update ${{ inputs.helm-chart }} ${{ NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
+        git push
