@@ -42,17 +42,17 @@ runs:
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
         if echo "${GITHUB_REF##*/}" | grep -qE '^(main|master)$'; then
-            echo "::set-env name=GKE_CLUSTER::tillit-k8s-cluster"
-            echo "::set-env name=NAMESPACE::production"
+            echo "GKE_CLUSTER=tillit-k8s-cluster" >> $GITHUB_ENV
+            echo "NAMESPACE=production" >> $GITHUB_ENV
         elif echo "${GITHUB_REF##*/}" | grep -qE '^(staging|develop)$'; then
-            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
-            echo "::set-env name=NAMESPACE::staging"
+            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
+            echo "NAMESPACE=staging" >> $GITHUB_ENV
         elif echo "${GITHUB_REF##*/}" | grep -qE '^(experimental)$'; then
-            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
-            echo "::set-env name=NAMESPACE::experimental"
-        elif echo "${GITHUB_REF##*/}" | grep -qE '^(perftest)$'; then
-            echo "::set-env name=GKE_CLUSTER::tillit-staging-k8s-cluster"
-            echo "::set-env name=NAMESPACE::perftest"
+            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
+            echo "NAMESPACE=experimental" >> $GITHUB_ENV
+        elif echo "${GITHUB_REF##*/}" | grep -qE '^(perf)$'; then
+            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
+            echo "NAMESPACE=perftest" >> $GITHUB_ENV
         fi
     -
       name: Setup gcloud cli
@@ -64,7 +64,7 @@ runs:
       name: Setup gke credentials
       uses: google-github-actions/get-gke-credentials@fb08709ba27618c31c09e014e1d8364b02e5042e
       with:
-        cluster_name: ${{ GKE_CLUSTER }}
+        cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
         credentials: ${{ inputs.gke-sa-key }}
     -
@@ -78,7 +78,7 @@ runs:
       name: Replace version in helm values
       uses: mikefarah/yq@master
       with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ env.NAMESPACE }}.yaml
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
     -
@@ -86,7 +86,7 @@ runs:
       shell: bash
       run: |
         cd tillit-helm
-        helm upgrade -i --create-namespace -n ${{ NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ NAMESPACE }}.yaml
+        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Push new version to the tillit-helm repo
       shell: bash
@@ -94,5 +94,5 @@ runs:
         cd tillit-helm
         git config user.name github-actions
         git config user.email github-actions@github.com
-        git commit -am "Update ${{ inputs.helm-chart }} ${{ NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
+        git commit -am "Update ${{ inputs.helm-chart }} ${{ env.NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
         git push
