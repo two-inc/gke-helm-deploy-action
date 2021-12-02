@@ -34,8 +34,6 @@ inputs:
     default: tillit-api
 runs:
   using: composite
-  env:
-    HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
   steps:
     -
       name: Install Helm
@@ -45,8 +43,11 @@ runs:
     -
       name: Determine which cluster and namespace to deploy to
       shell: bash
+      env:
+        HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
+        echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
         if echo "${GITHUB_REF##*/}" | grep -qE '^(main|master)$'; then
             echo "GKE_CLUSTER=tillit-k8s-cluster" >> $GITHUB_ENV
             echo "NAMESPACE=production" >> $GITHUB_ENV
@@ -83,16 +84,16 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
-      with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
+      with:
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
-      name: Deploy
+      name: Deploy helm chart
       shell: bash
       run: |
         cd tillit-helm
-        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }}${{ inputs.helm-suffix }} charts/${{ inputs.helm-chart }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ inputs.helm-chart }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Push new version to the tillit-helm repo
       shell: bash
@@ -100,5 +101,5 @@ runs:
         cd tillit-helm
         git config user.name github-actions
         git config user.email github-actions@github.com
-        git commit -am "Update ${{ env.HELM_RELEASE }} ${{ env.NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
+        git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}"
         git push
