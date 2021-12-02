@@ -20,6 +20,10 @@ inputs:
     description: Helm repository
     required: true
     default: tillit-dot-ai/tillit-helm
+  helm-values-subdir:
+    description: Helm values sub-directory
+    required: true
+    default: ''
   gke-zone:
     description: GKE zone
     required: true
@@ -78,7 +82,7 @@ runs:
       name: Replace version in helm values
       uses: mikefarah/yq@master
       with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}/values-${{ env.NAMESPACE }}.yaml
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ inputs.helm-chart }}${{ inputs.helm-values-subdir }}/values-${{ env.NAMESPACE }}.yaml
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
     -
@@ -86,7 +90,7 @@ runs:
       shell: bash
       run: |
         cd tillit-helm
-        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}/values-${{ env.NAMESPACE }}.yaml
+        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ inputs.helm-chart }} charts/${{ inputs.helm-chart }} -f values/${{ inputs.helm-chart }}${{ inputs.helm-values-subdir }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Push new version to the tillit-helm repo
       shell: bash
@@ -94,5 +98,5 @@ runs:
         cd tillit-helm
         git config user.name github-actions
         git config user.email github-actions@github.com
-        git commit -am "Update ${{ inputs.helm-chart }} ${{ env.NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
+        git commit -am "Update ${{ inputs.helm-chart }}${{ inputs.helm-values-subdir }} ${{ env.NAMESPACE }} with new image tag ${{ inputs.image-tag }}"
         git push
