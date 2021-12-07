@@ -74,10 +74,6 @@ inputs:
     default: tillit-api
 runs:
   using: composite
-  env:
-    IMAGE_TAG: ${{ inputs.image-tag }}
-    HELM_CHART: ${{ inputs.helm-chart }}
-    HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
   steps:
     -
       name: Install Helm
@@ -87,8 +83,15 @@ runs:
     -
       name: Determine which cluster and namespace to deploy to
       shell: bash
+      env:
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        HELM_CHART: ${{ inputs.helm-chart }}
+        HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
+        echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+        echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
+        echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
         if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
             echo "GKE_CLUSTER=${{ inputs.production-cluster }}" >> $GITHUB_ENV
             echo "NAMESPACE=${{ inputs.production-namespace }}" >> $GITHUB_ENV
@@ -126,7 +129,7 @@ runs:
       name: Replace version in helm values
       uses: mikefarah/yq@master
       with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${HELM_RELEASE}/values-${NAMESPACE}.yaml
     -
       name: Deploy helm chart
       shell: bash
