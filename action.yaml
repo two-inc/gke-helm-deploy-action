@@ -16,6 +16,46 @@ inputs:
   gke-sa-key:
     description: GKE Service Account Credential
     required: true
+  production-cluster:
+    description: Name of production cluster
+    required: true
+    default: tillit-k8s-cluster
+  staging-cluster:
+    description: Name of staging cluster
+    required: true
+    default: tillit-staging-k8s-cluster
+  production-namespace:
+    description: Name of production namespace
+    required: true
+    default: production
+  production-branch-regex:
+    description: Regex to detect production branch
+    required: true
+    default: ^(main|master)$
+  staging-namespace:
+    description: Name of staging namespace
+    required: true
+    default: staging
+  staging-branch-regex:
+    description: Regex to detect staging branch
+    required: true
+    default: ^(develop|staging)$
+  experimental-namespace:
+    description: Name of experimental namespace
+    required: true
+    default: experimental
+  experimental-branch-regex:
+    description: Regex to detect experimental branch
+    required: true
+    default: ^(experimental)$
+  perftest-namespace:
+    description: Name of perftest namespace
+    required: true
+    default: perftest
+  perftest-branch-regex:
+    description: Regex to detect perftest branch
+    required: true
+    default: ^(perf)$
   helm-repository:
     description: Helm repository
     required: true
@@ -48,18 +88,18 @@ runs:
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
         echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
-        if echo "${GITHUB_REF##*/}" | grep -qE '^(main|master)$'; then
-            echo "GKE_CLUSTER=tillit-k8s-cluster" >> $GITHUB_ENV
-            echo "NAMESPACE=production" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '^(staging|develop)$'; then
-            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
-            echo "NAMESPACE=staging" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '^(experimental)$'; then
-            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
-            echo "NAMESPACE=experimental" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '^(perf)$'; then
-            echo "GKE_CLUSTER=tillit-staging-k8s-cluster" >> $GITHUB_ENV
-            echo "NAMESPACE=perftest" >> $GITHUB_ENV
+        if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
+            echo "GKE_CLUSTER=${{ inputs.production-cluster }}" >> $GITHUB_ENV
+            echo "NAMESPACE=${{ inputs.production-namespace }}" >> $GITHUB_ENV
+        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.staging-branch-regex }}'; then
+            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
+            echo "NAMESPACE=${{ inputs.staging-namespace }}" >> $GITHUB_ENV
+        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.experimental-branch-regex }}'; then
+            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
+            echo "NAMESPACE=${{ inputs.experimental-namespace }}" >> $GITHUB_ENV
+        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perftest-branch-regex }}'; then
+            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
+            echo "NAMESPACE=${{ inputs.perftest-namespace }}" >> $GITHUB_ENV
         fi
     -
       name: Setup gcloud cli
@@ -80,25 +120,27 @@ runs:
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
-        path: ./tillit-helm
+        path: helm-charts
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
       with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' tillit-helm/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       shell: bash
       run: |
-        cd tillit-helm
-        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ inputs.helm-chart }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        cd helm-charts
+        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ inputs.helm-charts }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
-      name: Push new version to the tillit-helm repo
+      name: Push new version to the helm repo
       shell: bash
       run: |
-        cd tillit-helm
-        git config user.name github-actions
-        git config user.email github-actions@github.com
-        git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}" && git push
+        cd helm-charts
+        git diff --exit-code && echo "Same image tag deployed" || {
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+	    git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}" && git push
+        }
