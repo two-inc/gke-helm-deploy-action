@@ -142,5 +142,5 @@ runs:
         git diff --exit-code && echo "Same image tag deployed" || {
             git config user.name github-actions
             git config user.email github-actions@github.com
-	    git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}" && git push
+      git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}" && git push
         }
