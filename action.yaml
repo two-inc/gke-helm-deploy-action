@@ -74,6 +74,10 @@ inputs:
     default: tillit-api
 runs:
   using: composite
+  env:
+    IMAGE_TAG: ${{ inputs.image-tag }}
+    HELM_CHART: ${{ inputs.helm-chart }}
+    HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
   steps:
     -
       name: Install Helm
@@ -83,11 +87,8 @@ runs:
     -
       name: Determine which cluster and namespace to deploy to
       shell: bash
-      env:
-        HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
-        echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
         if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
             echo "GKE_CLUSTER=${{ inputs.production-cluster }}" >> $GITHUB_ENV
             echo "NAMESPACE=${{ inputs.production-namespace }}" >> $GITHUB_ENV
@@ -124,8 +125,6 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
-      env:
-        IMAGE_TAG: ${{ inputs.image-tag }}
       with:
         cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
@@ -133,14 +132,14 @@ runs:
       shell: bash
       run: |
         cd helm-charts
-        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ inputs.helm-charts }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        helm upgrade -i --create-namespace -n ${NAMESPACE} --atomic ${HELM_RELEASE} charts/${HELM_CHART} -f values/${HELM_RELEASE}/values-${NAMESPACE}.yaml
     -
       name: Push new version to the helm repo
       shell: bash
       run: |
         cd helm-charts
-        git diff --exit-code && echo "Same image tag deployed" || {
+        git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
             git config user.name github-actions
             git config user.email github-actions@github.com
-            git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ inputs.image-tag }}" && git push
+            git stash && git pull && git stash pop && git commit -am "Update ${NAMESPACE} ${HELM_RELEASE} with image tag ${IMAGE_TAG}" && git push
         }
