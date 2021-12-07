@@ -120,7 +120,7 @@ runs:
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
-        path: helm-charts
+        path: ./helm-charts
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
