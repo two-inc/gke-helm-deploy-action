@@ -124,18 +124,18 @@ runs:
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
-        path: ./helm-charts
+        path: helm-charts
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
       with:
-        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${HELM_RELEASE}/values-${NAMESPACE}.yaml
+        cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       shell: bash
       run: |
         cd helm-charts
-        helm upgrade -i --create-namespace -n ${NAMESPACE} --atomic ${HELM_RELEASE} charts/${HELM_CHART} -f values/${HELM_RELEASE}/values-${NAMESPACE}.yaml
+        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Push new version to the helm repo
       shell: bash
@@ -144,5 +144,5 @@ runs:
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
             git config user.name github-actions
             git config user.email github-actions@github.com
-            git stash && git pull && git stash pop && git commit -am "Update ${NAMESPACE} ${HELM_RELEASE} with image tag ${IMAGE_TAG}" && git push
+            git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ env.IMAGE_TAG }}" && git push
         }
