@@ -59,7 +59,7 @@ inputs:
   helm-repository:
     description: Helm repository
     required: true
-    default: tillit-dot-ai/tillit-helm
+    default: tillit-dot-ai/helm
   helm-release:
     description: Helm release
     required: true
