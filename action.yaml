@@ -72,6 +72,9 @@ inputs:
     description: GKE project name
     required: true
     default: tillit-api
+  slack-webhook:
+    description: Slack webhook url
+    required: true
 runs:
   using: composite
   steps:
@@ -132,13 +135,30 @@ runs:
         cmd: yq eval -i '.image.tag = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
+      id: deploy-chart
       shell: bash
-      run: |
-        cd helm-charts
+      run: >
+        cd helm-charts;
         helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        && echo "DEPLOY_OUTCOME=success" >> $GITHUB_ENV
+        || echo "DEPLOY_OUTCOME=failure" >> $GITHUB_ENV
+    -
+      name: Slack notification on failure
+      uses: rtCamp/action-slack-notify@v2
+      if: env.DEPLOY_OUTCOME == 'failure'
+      env:
+        SLACK_TITLE: "Helm chart deployment failure"
+        SLACK_COLOR: ${{ env.DEPLOY_OUTCOME }}
+        SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
+    -
+      name: Error status on failure
+      shell: bash
+      run: echo "See output of 'deploy-chart' step." && exit 1
+      if: env.DEPLOY_OUTCOME == 'failure'
     -
       name: Push new version to the helm repo
       shell: bash
+      if: env.DEPLOY_OUTCOME == 'success'
       run: |
         cd helm-charts
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
