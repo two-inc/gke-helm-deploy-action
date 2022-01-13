@@ -147,9 +147,10 @@ runs:
       uses: rtCamp/action-slack-notify@v2
       if: env.DEPLOY_OUTCOME == 'failure'
       env:
-        SLACK_TITLE: "Helm chart deployment failure"
+        SLACK_TITLE: "Deploy of ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} failed."
         SLACK_COLOR: ${{ env.DEPLOY_OUTCOME }}
         SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
+        SLACK_FOOTER: "Kubernetes cluster: ${{ GKE_CLUSTER }}"
     -
       name: Error status on failure
       shell: bash
