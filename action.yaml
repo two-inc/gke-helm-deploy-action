@@ -91,7 +91,6 @@ runs:
       shell: bash
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
-        IMAGE_TAG_KEY: ${{ inputs.image-tag-key }}
         HELM_CHART: ${{ inputs.helm-chart }}
         HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
       run: |
@@ -137,7 +136,7 @@ runs:
       name: Replace version in helm values
       uses: mikefarah/yq@master
       with:
-        cmd: yq eval -i 'env(IMAGE_TAG_KEY) = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        cmd: yq eval -i '${{ inputs.image-tag-key }} = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       id: deploy-chart
