@@ -68,10 +68,6 @@ inputs:
     description: GKE zone
     required: true
     default: europe-north1
-  gke-project:
-    description: GKE project name
-    required: true
-    default: tillit-api
   slack-webhook:
     description: Slack webhook url
     required: true
@@ -117,7 +113,6 @@ runs:
       uses: google-github-actions/auth@v0.6.0
       with:
         credentials_json: ${{ inputs.gke-sa-key }}
-        project_id: ${{ inputs.gke-project }}
     -
       name: Get gke credentials
       uses: google-github-actions/get-gke-credentials@v0.6.0
