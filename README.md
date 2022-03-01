@@ -52,7 +52,7 @@ jobs:
         cmd: yarn build
       -
         name: Invoke GKE helm deploy action
-        uses: tillit-dot-ai/gke-helm-deploy-action@v0.3.1
+        uses: tillit-dot-ai/gke-helm-deploy-action@v0.4.0
         with:
           helm-chart: checkout-page
           github-ref: ${{ github.ref }}
