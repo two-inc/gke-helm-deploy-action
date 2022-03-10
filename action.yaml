@@ -56,6 +56,10 @@ inputs:
     description: Regex to detect perftest branch
     required: true
     default: ^(perf)$
+  disabled-namespace-regex:
+    description: Regex to detect if deployment to a namespace is disabled
+    required: true
+    default: ^(sandbox)$
   helm-repository:
     description: Helm repository
     required: true
@@ -77,11 +81,6 @@ inputs:
 runs:
   using: composite
   steps:
-    -
-      name: Install Helm
-      shell: bash
-      run: |
-        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
     -
       name: Determine which cluster and namespace to deploy to
       shell: bash
@@ -109,19 +108,39 @@ runs:
             echo "NAMESPACE=${{ inputs.perftest-namespace }}" >> $GITHUB_ENV
         fi
     -
+      name: Determine if the namespace is disabled
+      shell: bash
+      if: env.DEPLOY == 'true'
+      run: |
+        if echo "${{ env.NAMESPACE }}" | grep -qE '${{ inputs.disabled-namespace-regex }}'; then
+            echo "DEPLOY=false" >> $GITHUB_ENV
+            echo "Skipping, deploy to ${{ env.NAMESPACE }} namespace is disabled."
+        else
+            echo "DEPLOY=true" >> $GITHUB_ENV
+        fi
+    -
+      name: Install Helm
+      shell: bash
+      if: env.DEPLOY == 'true'
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    -
       name: Authenticate against GCP
       uses: google-github-actions/auth@v0.6.0
+      if: env.DEPLOY == 'true'
       with:
         credentials_json: ${{ inputs.gke-sa-key }}
     -
       name: Get gke credentials
       uses: google-github-actions/get-gke-credentials@v0.6.0
+      if: env.DEPLOY == 'true'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
     -
       name: Clone helm repo
       uses: actions/checkout@master
+      if: env.DEPLOY == 'true'
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
@@ -129,11 +148,13 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
+      if: env.DEPLOY == 'true'
       with:
         cmd: yq eval -i '${{ inputs.image-tag-key }} = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       id: deploy-chart
+      if: env.DEPLOY == 'true'
       shell: bash
       run: >
         cd helm-charts;
@@ -143,7 +164,7 @@ runs:
     -
       name: Slack notification on failure
       uses: rtCamp/action-slack-notify@v2
-      if: env.DEPLOY_OUTCOME == 'failure'
+      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
       env:
         SLACK_TITLE: "Deploy of ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} failed."
         SLACK_COLOR: ${{ env.DEPLOY_OUTCOME }}
@@ -152,12 +173,12 @@ runs:
     -
       name: Error status on failure
       shell: bash
+      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
       run: echo "See output of 'deploy-chart' step." && exit 1
-      if: env.DEPLOY_OUTCOME == 'failure'
     -
       name: Push new version to the helm repo
       shell: bash
-      if: env.DEPLOY_OUTCOME == 'success'
+      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'success'
       run: |
         cd helm-charts
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
