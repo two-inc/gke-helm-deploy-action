@@ -48,12 +48,12 @@ inputs:
     description: Regex to detect experimental branch
     required: true
     default: ^(experimental)$
-  perftest-namespace:
-    description: Name of perftest namespace
+  perf-namespace:
+    description: Name of perf namespace
     required: true
-    default: perftest
-  perftest-branch-regex:
-    description: Regex to detect perftest branch
+    default: perf
+  perf-branch-regex:
+    description: Regex to detect perf branch
     required: true
     default: ^(perf)$
   disabled-namespace-regex:
@@ -103,9 +103,9 @@ runs:
         elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.experimental-branch-regex }}'; then
             echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
             echo "NAMESPACE=${{ inputs.experimental-namespace }}" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perftest-branch-regex }}'; then
+        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perf-branch-regex }}'; then
             echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
-            echo "NAMESPACE=${{ inputs.perftest-namespace }}" >> $GITHUB_ENV
+            echo "NAMESPACE=${{ inputs.perf-namespace }}" >> $GITHUB_ENV
         fi
     -
       name: Determine if the namespace is disabled
