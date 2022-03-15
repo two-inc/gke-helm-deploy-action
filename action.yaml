@@ -13,6 +13,7 @@ inputs:
   github-ref:
     description: GitHub reference of the source repository
     required: true
+    default: ''
   gke-sa-key:
     description: GKE Service Account Credential
     required: true
@@ -24,6 +25,14 @@ inputs:
     description: Name of staging cluster
     required: true
     default: tillit-staging-k8s-cluster
+  cluster-override:
+    description: Cluster to override
+    required: false
+    default: ''
+  namespace-override:
+    description: Namespace to override
+    required: false
+    default: ''
   production-namespace:
     description: Name of production namespace
     required: true
@@ -91,56 +100,64 @@ runs:
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
         echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-        echo "IMAGE_TAG_KEY=${IMAGE_TAG_KEY}" >> $GITHUB_ENV 
         echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
         echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
-        if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
-            echo "GKE_CLUSTER=${{ inputs.production-cluster }}" >> $GITHUB_ENV
-            echo "NAMESPACE=${{ inputs.production-namespace }}" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.staging-branch-regex }}'; then
-            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
-            echo "NAMESPACE=${{ inputs.staging-namespace }}" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.experimental-branch-regex }}'; then
-            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
-            echo "NAMESPACE=${{ inputs.experimental-namespace }}" >> $GITHUB_ENV
-        elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perf-branch-regex }}'; then
-            echo "GKE_CLUSTER=${{ inputs.staging-cluster }}" >> $GITHUB_ENV
-            echo "NAMESPACE=${{ inputs.perf-namespace }}" >> $GITHUB_ENV
-        fi
-    -
-      name: Determine if the namespace is disabled
-      shell: bash
-      if: env.DEPLOY == 'true'
-      run: |
-        if echo "${{ env.NAMESPACE }}" | grep -qE '${{ inputs.disabled-namespace-regex }}'; then
-            echo "DEPLOY=false" >> $GITHUB_ENV
-            echo "Skipping, deploy to ${{ env.NAMESPACE }} namespace is disabled."
+        CONFIRM_DEPLOY=true
+        if [ "${{ inputs.cluster-override }}" != "" ] && [ "${{ inputs.namespace-override }}" != "" ]; then
+            # Override GKE cluster and Kubernetes namespace
+            GKE_CLUSTER=${{ inputs.cluster-override }}
+            NAMESPACE=${{ inputs.namespace-override }}
         else
-            echo "DEPLOY=true" >> $GITHUB_ENV
+            # Map branch name to GKE cluster and Kubernetes namespace
+            if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
+                GKE_CLUSTER=${{ inputs.production-cluster }}
+                NAMESPACE=${{ inputs.production-namespace }}
+            elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.staging-branch-regex }}'; then
+                GKE_CLUSTER=${{ inputs.staging-cluster }}
+                NAMESPACE=${{ inputs.staging-namespace }}
+            elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.experimental-branch-regex }}'; then
+                GKE_CLUSTER=${{ inputs.staging-cluster }}
+                NAMESPACE=${{ inputs.experimental-namespace }}
+            elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perf-branch-regex }}'; then
+                GKE_CLUSTER=${{ inputs.staging-cluster }}
+                NAMESPACE=${{ inputs.perf-namespace }}
+            else
+                echo "I do not know how to handle $GITHUB_REF branch."
+                exit 1
+            fi
+            # Do not deploy to disabled namespace
+            if echo "$NAMESPACE" | grep -qE '${{ inputs.disabled-namespace-regex }}'; then
+                CONFIRM_DEPLOY=false
+                echo "Skipping, deploy to $NAMESPACE namespace is disabled via disble-namespace-regex argument."
+            fi
         fi
+        echo "CONFIRM_DEPLOY=$CONFIRM_DEPLOY to GKE_CLUSTER=$GKE_CLUSTER, NAMESPACE=$NAMESPACE"
+        echo "GKE_CLUSTER=$GKE_CLUSTER" >> $GITHUB_ENV
+        echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
+        echo "CONFIRM_DEPLOY=$CONFIRM_DEPLOY" >> $GITHUB_ENV
     -
       name: Install Helm
       shell: bash
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       run: |
         curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
     -
       name: Authenticate against GCP
       uses: google-github-actions/auth@v0.6.0
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       with:
         credentials_json: ${{ inputs.gke-sa-key }}
     -
       name: Get gke credentials
       uses: google-github-actions/get-gke-credentials@v0.6.0
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
     -
       name: Clone helm repo
       uses: actions/checkout@master
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
@@ -148,13 +165,13 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       with:
         cmd: yq eval -i '${{ inputs.image-tag-key }} = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       id: deploy-chart
-      if: env.DEPLOY == 'true'
+      if: env.CONFIRM_DEPLOY == 'true'
       shell: bash
       run: >
         cd helm-charts;
@@ -164,7 +181,7 @@ runs:
     -
       name: Slack notification on failure
       uses: rtCamp/action-slack-notify@v2
-      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
+      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
       env:
         SLACK_TITLE: "Deploy of ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} failed."
         SLACK_COLOR: ${{ env.DEPLOY_OUTCOME }}
@@ -173,12 +190,12 @@ runs:
     -
       name: Error status on failure
       shell: bash
-      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
+      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
       run: echo "See output of 'deploy-chart' step." && exit 1
     -
       name: Push new version to the helm repo
       shell: bash
-      if: env.DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'success'
+      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'success'
       run: |
         cd helm-charts
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
