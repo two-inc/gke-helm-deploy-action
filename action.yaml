@@ -177,6 +177,7 @@ runs:
       shell: bash
       run: >
         cd helm-charts;
+        helm history --max 1 ${{ env.HELM_RELEASE }} -o yaml | grep 'status:' | grep -qv 'status: deployed' && helm rollback ${{ env.HELM_RELEASE }}
         helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml --debug
         && echo "DEPLOY_OUTCOME=success" >> $GITHUB_ENV
         || echo "DEPLOY_OUTCOME=failure" >> $GITHUB_ENV
