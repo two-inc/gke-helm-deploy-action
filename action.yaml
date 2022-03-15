@@ -17,6 +17,10 @@ inputs:
   gke-sa-key:
     description: GKE Service Account Credential
     required: true
+  production-cluster-namespace-regex:
+    description: Regex to detect production branch
+    required: true
+    default: ^(production|demo|sandbox)$
   production-cluster:
     description: Name of production cluster
     required: true
@@ -25,10 +29,6 @@ inputs:
     description: Name of staging cluster
     required: true
     default: tillit-staging-k8s-cluster
-  cluster-override:
-    description: Cluster to override
-    required: false
-    default: ''
   namespace-override:
     description: Namespace to override
     required: false
@@ -103,26 +103,21 @@ runs:
         echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
         echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
         CONFIRM_DEPLOY=true
-        if [ "${{ inputs.cluster-override }}" != "" ] && [ "${{ inputs.namespace-override }}" != "" ]; then
+        if [ "${{ inputs.namespace-override }}" != "" ]; then
             # Override GKE cluster and Kubernetes namespace
-            GKE_CLUSTER=${{ inputs.cluster-override }}
             NAMESPACE=${{ inputs.namespace-override }}
         else
             # Map branch name to GKE cluster and Kubernetes namespace
             if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
-                GKE_CLUSTER=${{ inputs.production-cluster }}
                 NAMESPACE=${{ inputs.production-namespace }}
             elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.staging-branch-regex }}'; then
-                GKE_CLUSTER=${{ inputs.staging-cluster }}
                 NAMESPACE=${{ inputs.staging-namespace }}
             elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.experimental-branch-regex }}'; then
-                GKE_CLUSTER=${{ inputs.staging-cluster }}
                 NAMESPACE=${{ inputs.experimental-namespace }}
             elif echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.perf-branch-regex }}'; then
-                GKE_CLUSTER=${{ inputs.staging-cluster }}
                 NAMESPACE=${{ inputs.perf-namespace }}
             else
-                echo "I do not know how to handle $GITHUB_REF branch."
+                echo "Error, I do not know where to deploy $GITHUB_REF branch."
                 exit 1
             fi
             # Do not deploy to disabled namespace
@@ -130,6 +125,10 @@ runs:
                 CONFIRM_DEPLOY=false
                 echo "Skipping, deploy to $NAMESPACE namespace is disabled via disble-namespace-regex argument."
             fi
+        fi
+        GKE_CLUSTER=${{ inputs.staging-cluster }}
+        if echo "$NAMESPACE" | grep -qE '${{ inputs.production-cluster-namespace-regex }}'; then
+            GKE_CLUSTER=${{ inputs.production-cluster }}
         fi
         echo "CONFIRM_DEPLOY=$CONFIRM_DEPLOY to GKE_CLUSTER=$GKE_CLUSTER, NAMESPACE=$NAMESPACE"
         echo "GKE_CLUSTER=$GKE_CLUSTER" >> $GITHUB_ENV
