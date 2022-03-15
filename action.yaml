@@ -102,10 +102,12 @@ runs:
         echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
         echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
         echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
-        CONFIRM_DEPLOY=true
+        DEPLOY_CONFIRM=true
+        DEPLOY_VERB="Update"
         if [ "${{ inputs.namespace-override }}" != "" ]; then
             # Override GKE cluster and Kubernetes namespace
             NAMESPACE=${{ inputs.namespace-override }}
+            DEPLOY_VERB="Manually update"
         else
             # Map branch name to GKE cluster and Kubernetes namespace
             if echo "${GITHUB_REF##*/}" | grep -qE '${{ inputs.production-branch-regex }}'; then
@@ -122,7 +124,7 @@ runs:
             fi
             # Do not deploy to disabled namespace
             if echo "$NAMESPACE" | grep -qE '${{ inputs.disabled-namespace-regex }}'; then
-                CONFIRM_DEPLOY=false
+                DEPLOY_CONFIRM=false
                 echo "Skipping, deploy to $NAMESPACE namespace is disabled via disble-namespace-regex argument."
             fi
         fi
@@ -130,33 +132,34 @@ runs:
         if echo "$NAMESPACE" | grep -qE '${{ inputs.production-cluster-namespace-regex }}'; then
             GKE_CLUSTER=${{ inputs.production-cluster }}
         fi
-        echo "CONFIRM_DEPLOY=$CONFIRM_DEPLOY to GKE_CLUSTER=$GKE_CLUSTER, NAMESPACE=$NAMESPACE"
+        echo "DEPLOY_CONFIRM=$DEPLOY_CONFIRM to GKE_CLUSTER=$GKE_CLUSTER, NAMESPACE=$NAMESPACE"
         echo "GKE_CLUSTER=$GKE_CLUSTER" >> $GITHUB_ENV
         echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
-        echo "CONFIRM_DEPLOY=$CONFIRM_DEPLOY" >> $GITHUB_ENV
+        echo "DEPLOY_CONFIRM=$DEPLOY_CONFIRM" >> $GITHUB_ENV
+        echo "DEPLOY_VERB=$DEPLOY_VERB" >> $GITHUB_ENV
     -
       name: Install Helm
       shell: bash
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       run: |
         curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
     -
       name: Authenticate against GCP
       uses: google-github-actions/auth@v0.6.0
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       with:
         credentials_json: ${{ inputs.gke-sa-key }}
     -
       name: Get gke credentials
       uses: google-github-actions/get-gke-credentials@v0.6.0
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
     -
       name: Clone helm repo
       uses: actions/checkout@master
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       with:
         repository: ${{ inputs.helm-repository }}
         token: ${{ inputs.helm-ssh-key }}
@@ -164,13 +167,13 @@ runs:
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       with:
         cmd: yq eval -i '${{ inputs.image-tag-key }} = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
       name: Deploy helm chart
       id: deploy-chart
-      if: env.CONFIRM_DEPLOY == 'true'
+      if: env.DEPLOY_CONFIRM == 'true'
       shell: bash
       run: >
         cd helm-charts;
@@ -180,7 +183,7 @@ runs:
     -
       name: Slack notification on failure
       uses: rtCamp/action-slack-notify@v2
-      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
+      if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'failure'
       env:
         SLACK_TITLE: "Deploy of ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} failed."
         SLACK_COLOR: ${{ env.DEPLOY_OUTCOME }}
@@ -189,16 +192,16 @@ runs:
     -
       name: Error status on failure
       shell: bash
-      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'failure'
+      if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'failure'
       run: echo "See output of 'deploy-chart' step." && exit 1
     -
       name: Push new version to the helm repo
       shell: bash
-      if: env.CONFIRM_DEPLOY == 'true' && env.DEPLOY_OUTCOME == 'success'
+      if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'success'
       run: |
         cd helm-charts
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
             git config user.name github-actions
             git config user.email github-actions@github.com
-            git stash && git pull && git stash pop && git commit -am "Update ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with image tag ${{ env.IMAGE_TAG }}" && git push
+            git stash && git pull && git stash pop && git commit -am "${{ env.DEPLOY_VERB }} ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with tag ${{ env.IMAGE_TAG }}" && git push
         }
