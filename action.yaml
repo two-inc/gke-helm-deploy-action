@@ -9,7 +9,8 @@ inputs:
     required: true
   image-tag:
     description: Image tag to deploy
-    required: true
+    required: false
+    default: ''
   github-ref:
     description: GitHub reference of the source repository
     required: true
@@ -33,8 +34,12 @@ inputs:
     description: Name of staging cluster
     required: true
     default: tillit-staging-k8s-cluster
-  namespace-override:
-    description: Namespace to override
+  source-namespace:
+    description: Namespace to pluck image tag from
+    required: false
+    default: ''
+  target-namespace:
+    description: Namespace to force deployment to
     required: false
     default: ''
   production-namespace:
@@ -79,23 +84,38 @@ runs:
   using: composite
   steps:
     -
+      name: Clone helm repo
+      uses: actions/checkout@master
+      with:
+        repository: ${{ inputs.helm-repository }}
+        token: ${{ inputs.helm-ssh-key }}
+        path: helm-charts
+    -
+      name: Read image tag from a source environment
+      id: source-image-tag
+      uses: mikefarah/yq@master
+      if: inputs.source-namespace != ''
+      with:
+        cmd: yq eval '${{ inputs.image-tag-key }}' helm-charts/values/${{ inputs.helm-release }}/values-${{ inputs.source-namespace }}.yaml
+    -
       name: Determine which cluster and namespace to deploy to
       shell: bash
       env:
-        IMAGE_TAG: ${{ inputs.image-tag }}
-        HELM_CHART: ${{ inputs.helm-chart }}
-        HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}
+        IMAGE_TAG: ${{ inputs.source-namespace != '' && steps.source-image-tag.outputs.result || inputs.image-tag }}
+        HELM_RELEASE: ${{ inputs.helm-release == '' && inputs.helm-chart || inputs.helm-release }}  # TODO: remove ternary once deploy actions on repos are updated
+        HELM_CHART: ${{ inputs.helm-chart == '' && inputs.helm-release || inputs.helm-chart }}
       run: |
         GITHUB_REF=${{ inputs.github-ref }}
         echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-        echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
         echo "HELM_RELEASE=${HELM_RELEASE}" >> $GITHUB_ENV
+        if echo "${HELM_RELEASE}" | grep -qE '^company-search'; then
+            HELM_CHART="company-search"
+        fi
+        echo "HELM_CHART=${HELM_CHART}" >> $GITHUB_ENV
         DEPLOY_CONFIRM=true
-        DEPLOY_VERB="Update"
-        if [ "${{ inputs.namespace-override }}" != "" ]; then
+        if [ "${{ inputs.target-namespace }}" != "" ]; then
             # Override GKE cluster and Kubernetes namespace
-            NAMESPACE=${{ inputs.namespace-override }}
-            DEPLOY_VERB="Manually update"
+            NAMESPACE=${{ inputs.target-namespace }}
         else
             # Map branch name to GKE cluster and Kubernetes namespace
             NAMESPACE=${GITHUB_REF##*/}
@@ -111,6 +131,10 @@ runs:
                 echo "Skipping, deploy to $NAMESPACE namespace is disabled via disble-namespace-regex argument."
             fi
         fi
+        COMMIT_MESSAGE="Update ${NAMESPACE} ${HELM_RELEASE} with tag ${IMAGE_TAG}"
+        if [ "${{ inputs.source-namespace }}" != "" ]; then
+            COMMIT_MESSAGE="${COMMIT_MESSAGE} from ${{ inputs.source-namespace }}"
+        fi
         if echo "$NAMESPACE" | grep -qE '${{ inputs.production-cluster-namespace-regex }}'; then
             GKE_CLUSTER=${{ inputs.production-cluster }}
         elif echo "$NAMESPACE" | grep -qE '${{ inputs.staging-cluster-namespace-regex }}'; then
@@ -123,7 +147,7 @@ runs:
         echo "GKE_CLUSTER=$GKE_CLUSTER" >> $GITHUB_ENV
         echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
         echo "DEPLOY_CONFIRM=$DEPLOY_CONFIRM" >> $GITHUB_ENV
-        echo "DEPLOY_VERB=$DEPLOY_VERB" >> $GITHUB_ENV
+        echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
     -
       name: Install Helm
       shell: bash
@@ -143,14 +167,6 @@ runs:
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
-    -
-      name: Clone helm repo
-      uses: actions/checkout@master
-      if: env.DEPLOY_CONFIRM == 'true'
-      with:
-        repository: ${{ inputs.helm-repository }}
-        token: ${{ inputs.helm-ssh-key }}
-        path: helm-charts
     -
       name: Replace version in helm values
       uses: mikefarah/yq@master
@@ -191,5 +207,5 @@ runs:
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
             git config user.name github-actions
             git config user.email github-actions@github.com
-            git stash && git pull && git stash pop && git commit -am "${{ env.DEPLOY_VERB }} ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} with tag ${{ env.IMAGE_TAG }}" && git push
+            git stash && git pull && git stash pop && git commit -am "${{ env.COMMIT_MESSAGE }}" && git push
         }
