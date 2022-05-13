@@ -61,7 +61,7 @@ inputs:
   disabled-namespace-regex:
     description: Regex to detect if deployment to a namespace is disabled
     required: true
-    default: ^()$
+    default: ^(demo)$
   helm-repository:
     description: Helm repository
     required: true
