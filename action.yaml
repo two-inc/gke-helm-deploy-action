@@ -4,6 +4,9 @@ inputs:
   helm-ssh-key:
     description: SSH key to clone Helm chart repo
     required: true
+  personal-access-token:
+    description: Personal access token for Github account
+    required: false
   helm-chart:
     description: Helm chart to deploy
     required: true
@@ -88,7 +91,7 @@ runs:
       uses: actions/checkout@master
       with:
         repository: ${{ inputs.helm-repository }}
-        token: ${{ inputs.helm-ssh-key }}
+        token: ${{ inputs.personal-access-token != '' && inputs.personal-access-token || inputs.helm-ssh-key }}
         path: helm-charts
     -
       name: Read image tag from a source environment
