@@ -205,7 +205,7 @@ runs:
       run: |
         cd helm-charts
         git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
-            git config user.name github-actions
-            git config user.email github-actions@github.com
+            git config user.name two-inc-bot
+            git config user.email bot@two.inc
             git stash && git pull && git stash pop && git commit -am "${{ env.COMMIT_MESSAGE }}" && git push
         }
