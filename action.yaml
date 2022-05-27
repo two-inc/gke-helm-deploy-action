@@ -26,9 +26,9 @@ inputs:
     required: true
     default: ^(production|demo|sandbox)$
   staging-cluster-namespace-regex:
-    description: Regex to detect production branch
+    description: Regex to detect staging branch
     required: true
-    default: ^(staging|experimental|perf)$
+    default: ^(staging|experimental|perf|release)$
   production-cluster:
     description: Name of production cluster
     required: true
