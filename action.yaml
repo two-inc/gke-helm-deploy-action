@@ -36,7 +36,7 @@ inputs:
   staging-cluster:
     description: Name of staging cluster
     required: true
-    default: tillit-staging-k8s-cluster
+    default: beta
   source-namespace:
     description: Namespace to pluck image tag from
     required: false
