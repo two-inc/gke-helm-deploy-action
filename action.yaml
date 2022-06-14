@@ -1,12 +1,9 @@
 name: Deploy to GKE
 description: Deploy Helm chart to a Kubernetes cluster on GKE
 inputs:
-  helm-ssh-key:
-    description: SSH key to clone Helm chart repo
-    required: true
   personal-access-token:
     description: Personal access token for Github account
-    required: false
+    required: true
   helm-chart:
     description: Helm chart to deploy
     required: true
@@ -21,22 +18,18 @@ inputs:
   gke-sa-key:
     description: GKE Service Account Credential
     required: true
-  production-cluster-namespace-regex:
-    description: Regex to detect production branch
+  alpha-cluster-namespace-regex:
+    description: Regex to detect namespaces to deploy to alpha cluster
+    required: true
+    default: ^(perf|experimental)$
+  beta-cluster-namespace-regex:
+    description: Regex to detect namespaces to deploy to beta cluster
+    required: true
+    default: ^(staging|release)$
+  pi-cluster-namespace-regex:
+    description: Regex to detect namespaces to deploy to pi cluster
     required: true
     default: ^(production|demo|sandbox)$
-  staging-cluster-namespace-regex:
-    description: Regex to detect staging branch
-    required: true
-    default: ^(staging|experimental|perf|release)$
-  production-cluster:
-    description: Name of production cluster
-    required: true
-    default: tillit-k8s-cluster
-  staging-cluster:
-    description: Name of staging cluster
-    required: true
-    default: beta
   source-namespace:
     description: Namespace to pluck image tag from
     required: false
@@ -91,7 +84,7 @@ runs:
       uses: actions/checkout@master
       with:
         repository: ${{ inputs.helm-repository }}
-        token: ${{ inputs.personal-access-token != '' && inputs.personal-access-token || inputs.helm-ssh-key }}
+        token: ${{ inputs.personal-access-token }}
         path: helm-charts
     -
       name: Read image tag from a source environment
@@ -138,12 +131,14 @@ runs:
         if [ "${{ inputs.source-namespace }}" != "" ]; then
             COMMIT_MESSAGE="${COMMIT_MESSAGE} from ${{ inputs.source-namespace }}"
         fi
-        if echo "$NAMESPACE" | grep -qE '${{ inputs.production-cluster-namespace-regex }}'; then
-            GKE_CLUSTER=${{ inputs.production-cluster }}
-        elif echo "$NAMESPACE" | grep -qE '${{ inputs.staging-cluster-namespace-regex }}'; then
-            GKE_CLUSTER=${{ inputs.staging-cluster }}
+        if echo "$NAMESPACE" | grep -qE '${{ inputs.alpha-cluster-namespace-regex }}'; then
+            GKE_CLUSTER=alpha
+        elif echo "$NAMESPACE" | grep -qE '${{ inputs.beta-cluster-namespace-regex }}'; then
+            GKE_CLUSTER=beta
+        elif echo "$NAMESPACE" | grep -qE '${{ inputs.pi-cluster-namespace-regex }}'; then
+            GKE_CLUSTER=tillit-k8s-cluster
         else
-            echo "Skipping, cluster to deploy $NAMESPACE namespace to is not defined."
+            echo "Skipping, $NAMESPACE namespace is not mapped to any cluster."
             exit 1
         fi
         echo "DEPLOY_CONFIRM=$DEPLOY_CONFIRM to GKE_CLUSTER=$GKE_CLUSTER, NAMESPACE=$NAMESPACE"
