@@ -185,6 +185,7 @@ runs:
     -
       name: Slack notification on failure
       uses: rtCamp/action-slack-notify@v2
+      continue-on-error: true
       if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'failure'
       env:
         SLACK_TITLE: "Deploy of ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} failed."
