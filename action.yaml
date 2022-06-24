@@ -176,12 +176,16 @@ runs:
       id: deploy-chart
       if: env.DEPLOY_CONFIRM == 'true'
       shell: bash
-      run: >
-        cd helm-charts;
-        helm history --max 1 ${{ env.HELM_RELEASE }} -n ${{ env.NAMESPACE }} -o yaml | grep 'status:' | grep -qv 'status: deployed' && helm rollback -n ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} --wait;
-        helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml --debug
-        && echo "DEPLOY_OUTCOME=success" >> $GITHUB_ENV
-        || echo "DEPLOY_OUTCOME=failure" >> $GITHUB_ENV
+      run: |
+        cd helm-charts
+        curl -L https://github.com/wercker/stern/releases/download/1.11.0/stern_linux_amd64 -o stern
+        echo "e0b39dc26f3a0c7596b2408e4fb8da533352b76aaffdc18c7ad28c833c9eb7db stern" | sha256sum --check
+        chmod +x stern
+        helm history --max 1 ${{ env.HELM_RELEASE }} -n ${{ env.NAMESPACE }} -o yaml | grep 'status:' | grep -qv 'status: deployed' && helm rollback -n ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} --wait
+        (helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml --debug && echo "DEPLOY_OUTCOME=success" >> $GITHUB_ENV || echo "DEPLOY_OUTCOME=failure" >> $GITHUB_ENV) &
+        PID=$!
+        ./stern --namespace ${{ env.NAMESPACE}} ${{ env.HELM_RELEASE }} &
+        wait ${PID}
     -
       name: Slack notification on failure
       uses: rtCamp/action-slack-notify@v2
