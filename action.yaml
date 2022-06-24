@@ -190,7 +190,7 @@ runs:
         helm history --max 1 ${{ env.HELM_RELEASE }} -n ${{ env.NAMESPACE }} -o yaml | grep 'status:' | grep -qv 'status: deployed' && helm rollback -n ${{ env.NAMESPACE }} ${{ env.HELM_RELEASE }} --wait
         (helm upgrade -i --create-namespace -n ${{ env.NAMESPACE }} --atomic ${{ env.HELM_RELEASE }} charts/${{ env.HELM_CHART }} -f values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml --debug && echo "DEPLOY_OUTCOME=success" >> $GITHUB_ENV || echo "DEPLOY_OUTCOME=failure" >> $GITHUB_ENV) &
         PID=$!
-        ./stern --namespace ${{ env.NAMESPACE}} ${{ env.HELM_RELEASE }} &
+        ./stern --namespace ${{ env.NAMESPACE}} --selector app.kubernetes.io/instance=${{ env.HELM_RELEASE }} &
         wait ${PID}
     -
       name: Slack notification on failure
