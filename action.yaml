@@ -29,7 +29,11 @@ inputs:
   pi-cluster-namespace-regex:
     description: Regex to detect namespaces to deploy to pi cluster
     required: true
-    default: ^(production|demo|sandbox)$
+    default: ^(demo|sandbox)$
+  prod-cluster-namespace-regex:
+    description: Regex to detect namespaces to deploy to pi cluster
+    required: true
+    default: ^(production)$
   source-namespace:
     description: Namespace to pluck image tag from
     required: false
@@ -136,6 +140,8 @@ runs:
         elif echo "$NAMESPACE" | grep -qE '${{ inputs.beta-cluster-namespace-regex }}'; then
             GKE_CLUSTER=beta
         elif echo "$NAMESPACE" | grep -qE '${{ inputs.pi-cluster-namespace-regex }}'; then
+            GKE_CLUSTER=pi
+        elif echo "$NAMESPACE" | grep -qE '${{ inputs.prod-cluster-namespace-regex }}'; then
             GKE_CLUSTER=tillit-k8s-cluster
         else
             echo "Skipping, $NAMESPACE namespace is not mapped to any cluster."
