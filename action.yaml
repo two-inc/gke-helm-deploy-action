@@ -176,6 +176,20 @@ runs:
       with:
         cmd: yq eval -i '${{ inputs.image-tag-key }} = env(IMAGE_TAG)' helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
     -
+      name: Push new version to the helm repo
+      shell: bash
+      if: env.DEPLOY_CONFIRM == 'true'
+      run: |
+        cd helm-charts
+        chmod 755 helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        if git diff --exit-code; then
+            echo "INFO	Nothing to commit since existing image tag was deployed."
+        else
+            git config user.name two-inc-bot
+            git config user.email bot@two.inc
+            git stash && git pull && git stash pop && git commit -am "${{ env.COMMIT_MESSAGE }}" && git push
+        fi
+    -
       name: Deploy helm chart
       id: deploy-chart
       if: env.DEPLOY_CONFIRM == 'true'
@@ -205,14 +219,3 @@ runs:
       shell: bash
       if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'failure'
       run: echo "See output of 'deploy-chart' step." && exit 1
-    -
-      name: Push new version to the helm repo
-      shell: bash
-      if: env.DEPLOY_CONFIRM == 'true' && env.DEPLOY_OUTCOME == 'success'
-      run: |
-        cd helm-charts
-        git diff --exit-code && echo "INFO	Nothing to commit since existing image tag was deployed." || {
-            git config user.name two-inc-bot
-            git config user.email bot@two.inc
-            git stash && git pull && git stash pop && git commit -am "${{ env.COMMIT_MESSAGE }}" && git push
-        }
