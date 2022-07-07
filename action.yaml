@@ -166,6 +166,10 @@ runs:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ inputs.gke-zone }}
     -
+      name: Relax permission of values file
+      run: chmod 777 helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+      shell: bash
+    -
       name: Replace version in helm values
       uses: mikefarah/yq@master
       if: env.DEPLOY_CONFIRM == 'true'
