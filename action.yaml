@@ -181,7 +181,7 @@ runs:
       if: env.DEPLOY_CONFIRM == 'true'
       run: |
         cd helm-charts
-        chmod 755 helm-charts/values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
+        chmod 755 values/${{ env.HELM_RELEASE }}/values-${{ env.NAMESPACE }}.yaml
         if git diff --exit-code; then
             echo "INFO	Nothing to commit since existing image tag was deployed."
         else
